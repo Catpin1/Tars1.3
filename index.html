@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AR y Distancia al Río Mapocho</title>
+    <script src="https://aframe.io/releases/1.2.0/aframe.min.js"></script>
+    <script src="https://cdn.rawgit.com/jeromeetienne/ar.js/master/aframe/build/aframe-ar.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: black; /* Fondo negro */
+        }
+        h1, p, div {
+            color: white; /* Texto blanco */
+        }
+        #compass {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 24px;
+            z-index: 100;
+        }
+        .info-box {
+            background-color: rgba(0, 0, 0, 0.7); /* Fondo semi-transparente */
+            padding: 10px;
+            border-radius: 5px;
+            position: absolute;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="position: absolute; z-index: 100;">Distancia al Río Mapocho y Última Inundación</h1>
+    
+    <!-- Mostrar la ubicación y la distancia -->
+    <div id="location" class="info-box" style="top: 50px; left: 10px;">Localizando...</div>
+    <div id="distance" class="info-box" style="top: 90px; left: 10px;">Calculando distancia al Río Mapocho...</div>
+    
+    <!-- Brújula -->
+    <div id="compass">Brújula: 0°</div>
+    
+    <!-- Información de la última inundación -->
+    <div id="flood-info" class="info-box" style="top: 130px; left: 10px;">
+        Última inundación: Junio 2023. El río Mapocho se desbordó en Pudahuel, afectando a 60 familias y arrastrando basura y escombros.
+    </div>
+    
+    <!-- Datos de la API de EarthData -->
+    <div id="earthdata" class="info-box" style="top: 170px; left: 10px;">
+        Cargando datos de inundaciones cercanas...
+    </div>
+    
+    <!-- Video de la cámara -->
+    <video id="camera" autoplay style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover;"></video>
+    
+    <!-- Escena de AR.js -->
+    <a-scene embedded arjs>
+        <a-box position="0 0.5 -3" material="color: yellow;"></a-box>
+        <a-marker-camera preset="hiro"></a-marker-camera>
+    </a-scene>
+
+    <script>
+        const video = document.getElementById('camera');
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => {
+                video.srcObject = stream;
+            })
+            .catch(error => {
+                console.error("Error accediendo a la cámara:", error);
+            });
+
+        // Coordenadas del Río Mapocho (aproximadamente en Santiago, Chile)
+        const mapochoLat = -33.4378;
+        const mapochoLon = -70.6505;
+
+        // Función para calcular la distancia con la fórmula de Haversine
+        function calcularDistancia(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Radio de la Tierra en km
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c; // Distancia en km
+        }
+
+        // Obtener geolocalización del usuario y calcular la distancia
+        function mostrarUbicacion(pos) {
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            document.getElementById("location").textContent = `Tu ubicación - Latitud: ${lat}, Longitud: ${lon}`;
+            
+            const distancia = calcularDistancia(lat, lon, mapochoLat, mapochoLon);
+            document.getElementById("distance").textContent = `Distancia al Río Mapocho: ${distancia.toFixed(2)} km`;
+
+            // Llamar a la API de EarthData con las coordenadas del usuario
+            obtenerDatosEarthData(lat, lon);
+        }
+
+        // Función para manejar errores de geolocalización
+        function errorUbicacion() {
+            document.getElementById("location").textContent = "No se pudo obtener la ubicación.";
+            document.getElementById("distance").textContent = "No se pudo calcular la distancia.";
+        }
+
+        navigator.geolocation.getCurrentPosition(mostrarUbicacion, errorUbicacion);
+
+        // API de orientación para la brújula
+        window.addEventListener('deviceorientation', function(event) {
+            const alpha = event.alpha; // Brújula (rotación alrededor del eje Z)
+            document.getElementById('compass').textContent = `Brújula: ${Math.round(alpha)}°`;
+        });
+
+        // Función para obtener los datos de EarthData
+        function obtenerDatosEarthData(lat, lon) {
+            const token = 'eyJ0eXAiOiJKV1QiLCJvcmlnaW4iOiJFYXJ0aGRhdGEgTG9naW4iLCJzaWciOiJlZGxqd3RwdWJrZXlfb3BzIiwiYWxnIjoiUlMyNTYifQ...'; // Tu token de EarthData
+            const url = `https://api.nasa.gov/earthdata/floods?lat=${lat}&lon=${lon}&limit=5&token=${token}`;
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    let info = "Últimas inundaciones cercanas:<br>";
+                    data.forEach(flood => {
+                        info += `Fecha: ${flood.date}, Localización: ${flood.location}<br>`;
+                    });
+                    document.getElementById('earthdata').innerHTML = info;
+                })
+                .catch(error => {
+                    console.error("Error al obtener los datos de EarthData:", error);
+                    document.getElementById('earthdata').textContent = "No se pudieron cargar los datos de inundaciones.";
+                });
+        }
+    </script>
+</body>
+</html>
